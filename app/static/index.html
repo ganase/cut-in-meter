@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Interrupt-o-Meter</title>
+    <title>Cut-in-Meter</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -16,24 +16,23 @@
     <main class="app-shell">
       <section class="workspace">
         <section class="card signal-panel">
-          <div class="section-title">
-            <h2>話しかけてOKメーター</h2>
-            <p>赤・黄・青で表示</p>
-          </div>
-
           <div class="traffic-light" id="trafficLight">
             <div class="lamp lamp-red"></div>
             <div class="lamp lamp-yellow"></div>
             <div class="lamp lamp-blue"></div>
           </div>
+
+          <div class="signal-title">Cut-in-Meter</div>
+
+          <div class="signal-interpretation">
+            <p id="headline" class="headline">判定待ち</p>
+            <ul id="reasons" class="reasons"></ul>
+            <p id="playfulSuggestion" class="callout"></p>
+            <p id="caution" class="subtle"></p>
+          </div>
         </section>
 
         <section class="card metrics-panel">
-          <div class="section-title">
-            <h2>判定スコア</h2>
-            <p>スコア、確信度、最終判定からの経過時間</p>
-          </div>
-
           <div class="score-wrap">
             <div>
               <p class="metric-label">判定スコア</p>
@@ -72,11 +71,6 @@
             <input id="videoScrubber" type="range" min="0" max="1" step="0.01" value="0" />
           </div>
 
-          <div class="button-row">
-            <button id="analyzeButton" class="button accent" disabled>AIで判定</button>
-            <button id="autoAnalyzeButton" class="button ghost" disabled>自動判定を開始</button>
-          </div>
-
           <label class="interval-control" for="autoAnalyzeIntervalInput">
             <span>自動判定の間隔（秒）</span>
             <input
@@ -88,6 +82,20 @@
               inputmode="numeric"
             />
           </label>
+
+          <div class="button-row">
+            <button id="analyzeButton" class="button accent" disabled>AIで判定</button>
+            <button id="autoAnalyzeButton" class="button ghost" disabled>自動判定を開始</button>
+          </div>
+
+          <div class="manual-signal-controls">
+            <p class="metric-label">手動で信号変更</p>
+            <div class="button-row">
+              <button type="button" class="button signal-red" data-manual-signal="red">赤</button>
+              <button type="button" class="button signal-yellow" data-manual-signal="yellow">黄</button>
+              <button type="button" class="button signal-blue" data-manual-signal="blue">青</button>
+            </div>
+          </div>
         </section>
 
         <section class="card preview-panel">
@@ -105,20 +113,9 @@
             </div>
           </div>
         </section>
-
-        <section class="card details-panel">
-          <div class="section-title">
-            <h2>判定の根拠</h2>
-            <p>補足コメントとステータス</p>
-          </div>
-
-          <p id="headline" class="headline">判定待ち</p>
-          <ul id="reasons" class="reasons"></ul>
-          <p id="playfulSuggestion" class="callout"></p>
-          <p id="caution" class="subtle"></p>
-          <p id="statusMessage" class="status">AI待機中</p>
-        </section>
       </section>
+
+      <p id="statusMessage" class="status app-status">AI待機中</p>
     </main>
 
     <canvas id="workingCanvas" class="hidden"></canvas>

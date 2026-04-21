@@ -1,87 +1,124 @@
-# Interrupt-o-Meter App (Prototype)
+# Cut-in-Meter
 
-Outlook 予定とカメラ静止画を使って「話しかけてOK度」をジョーク表示する FastAPI アプリです。
+カメラ、画像、動画を読み込み、AI が「今この人に話しかけて大丈夫そうか」をジョーク判定するアプリです。
 
-## この仕組みは PC ローカルで動く？
-はい。**初期版は PC ローカル実行が前提**です（開発用サーバーをローカルで起動し、同一 PC のブラウザで利用）。
+## まずこれだけ
 
-また、同一ネットワーク内からアクセスできるように起動すれば、スマートフォンをブラウザクライアントとして使うことも可能です。
+### 0. GitHub から ZIP をダウンロード
 
----
+1. GitHub の `Cut-in-Meter` リポジトリを開く
+2. `Code` を押す
+3. `Download ZIP` を選ぶ
+4. ダウンロードした ZIP を解凍する
+5. 解凍してできた `Cut-in-Meter` フォルダを開く
 
-## 動作環境条件（デバイス / OS / クラウドサービス）
+### Windows
 
-### 1) デバイス
-- **必須**: カメラ付きデバイス（PC 内蔵カメラ or 外付け USB カメラ）
-- **推奨**: 開発実行は PC、閲覧のみならスマートフォンブラウザも可
-- **注意**: カメラ利用にはブラウザ権限の許可が必要
+1. ZIP を解凍したフォルダで `setup_windows.bat` を実行
+2. Python 3.11 / 3.12 / 3.13 が無ければ、案内に従ってインストールして終了
+3. セットアップ完了後、`.env` を開いて `OPENAI_API_KEY` を設定
+4. `run_windows.bat` を実行
+5. ブラウザで `http://127.0.0.1:8000` を開く
 
-### 2) OS
-- **推奨**: Linux / macOS / Windows 11
-- Python 仮想環境を作成できること
-- ブラウザ（Chrome / Edge / Safari など）で `getUserMedia` が使えること
+### macOS
 
-### 3) ランタイム / ミドルウェア
-- **Python**: 3.11 以上（設計想定）
-- 依存パッケージ: `requirements.txt` の内容
-- **DB**: SQLite（ローカルファイル `data/app.db`）
+1. ZIP を解凍したフォルダで `setup_macos.command` を実行
+2. Python 3.11 / 3.12 / 3.13 が無ければ、案内に従ってインストールして終了
+3. セットアップ完了後、`.env` を開いて `OPENAI_API_KEY` を設定
+4. `run_macos.command` を実行
+5. ブラウザで `http://127.0.0.1:8000` を開く
 
-### 4) 必要な外部クラウドサービス
-- **Microsoft Graph (Outlook Calendar)**
-  - Azure アプリ登録済みであること
-  - `Calendars.ReadBasic` など必要スコープが設定済みであること
-  - delegated auth（初期版は device code flow）を利用可能であること
-- **OpenAI API**
-  - 画像入力対応モデルを利用できる API キーがあること
-  - ネットワークから `api.openai.com` へ到達できること
+## ZIP ダウンロードから起動まで
 
-### 5) ネットワーク / セキュリティ条件
-- 外部 API（Microsoft Graph / OpenAI）へ HTTPS 接続できること
-- `.env` に API キー・クレデンシャルを設定し、Git 管理に含めないこと
-- カメラ権限はブラウザ側で明示許可すること
+### Windows
 
-### 6) クラウドデプロイ時の補足
-このプロトタイプはローカル前提ですが、将来的に Render / Railway / Fly.io / Azure App Service へ移行可能な構成です。
+1. GitHub から `Download ZIP`
+2. ZIP を解凍
+3. 解凍したフォルダを開く
+4. `setup_windows.bat` をダブルクリック
+5. `.env` に `OPENAI_API_KEY` を設定
+6. `run_windows.bat` をダブルクリック
+7. `http://127.0.0.1:8000` を開く
 
-ただし以下の追加対応が必要です。
-- 本番向け ASGI 起動（gunicorn/uvicorn 設定）
-- HTTPS 前提でのカメラアクセス設計
-- 認証コールバック URL / CORS / シークレット管理
-- SQLite の代替（必要なら PostgreSQL など）
+### macOS
 
----
+1. GitHub から `Download ZIP`
+2. ZIP を解凍
+3. 解凍したフォルダを開く
+4. `setup_macos.command` を実行
+5. `.env` に `OPENAI_API_KEY` を設定
+6. `run_macos.command` を実行
+7. `http://127.0.0.1:8000` を開く
 
-## 機能
-- `GET /api/health`: ヘルスチェック
-- `POST /api/calendar/fetch`: Microsoft Graph から期間指定で予定取得して SQLite 保存
-- `GET /api/calendar/events`: 保存済み予定を取得
-- `GET /api/calendar/events.csv`: 保存済み予定を CSV 出力
-- `POST /api/analyze/frame`: 画像 + 予定から `talk_ok_score` を算出
-- ブラウザ UI（`/`）でカメラ表示と定期解析
+## セットアップスクリプトの動作
 
-## セットアップ
+- Python 3.11 / 3.12 / 3.13 が入っているか確認
+- 入っていれば `.venv` を作成
+- 依存関係をインストール
+- `.env` が無ければ `.env.example` から作成
+- 対応 Python が無ければユーザーにインストールを依頼して終了
+
+## 手動セットアップ
+
+### Windows
+
+```bat
+py -3 -m venv .venv
+.venv\Scripts\python.exe -m pip install --upgrade pip
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+copy .env.example .env
+```
+
+### macOS
+
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+python3 -m venv .venv
+./.venv/bin/python -m pip install --upgrade pip
+./.venv/bin/python -m pip install -r requirements.txt
 cp .env.example .env
 ```
 
-`.env` を設定してください（OpenAI / Graph）。未設定時は画像判定を中立値 fallback で処理します。
+`.env` に `OPENAI_API_KEY` を設定してください。
 
 ## 起動
-```bash
-uvicorn app.main:app --reload
+
+### Windows
+
+```bat
+run_windows.bat
 ```
 
-ブラウザで `http://127.0.0.1:8000` を開いて利用します。
+### macOS
 
-## テスト
 ```bash
-pytest -q
+./run_macos.command
 ```
 
-## 注意
-- 本アプリはジョーク用途です。判定の正確性を保証しません。
-- 秘密情報は `.env` で管理し、GitHub へコミットしないでください。
-- 画像の永続保存は初期版では無効です。
+## Features
+
+- ブラウザのカメラ入力
+- 画像ファイルの読み込み
+- 動画ファイルの読み込みとフレーム指定
+- OpenAI Responses API による LLM 画像判定
+- 赤・黄・青の信号表示
+- 8 秒ごとの実況モード
+
+## Environment Variables
+
+- `OPENAI_API_KEY`: OpenAI API key
+- `OPENAI_MODEL`: 既定は `gpt-5.4-mini`
+- `OPENAI_TIMEOUT_SEC`: API タイムアウト秒数
+- `FRAME_INTERVAL_SEC`: 実況モードの参考値
+- `IMAGE_MAX_WIDTH`: クライアントで切り出す画像の最大辺
+- `IMAGE_JPEG_QUALITY`: クライアントで送る JPEG 品質
+
+## API
+
+- `GET /api/health`: ヘルスチェック
+- `POST /api/score`: 画像データ URL を受け取り、赤黄青の信号つきスコアを返す
+- `POST /api/analyze/frame`: 既存互換の画像分析 API
+
+## Notes
+
+- 動画そのものを API に送るのではなく、現在フレームを切り出して画像として判定します。
+- 判定は visible cues ベースの軽いジョーク用途です。重要な判断には使わないでください。

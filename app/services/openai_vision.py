@@ -11,15 +11,16 @@ from app.schemas import InterruptScoreResult, OpenAIVisionResult
 
 
 SYSTEM_PROMPT = (
-    "You are scoring a harmless joke app called Interrupt-o-Meter. "
+    "You are scoring a harmless joke app called Cut-in-Meter. "
     "Estimate whether it looks like a good moment to talk to the person in the image. "
     "Use only visible, situational cues such as looking focused on a screen, in conversation, eating, "
     "exercising, wearing headphones, driving, sleeping, or appearing idle. "
     "Treat a visible smile, relaxed expression, and open body language as strong positive cues. "
-    "If the person is clearly smiling, prefer a blue result unless there is a strong conflicting cue. "
+    "If the person is smiling or softly smiling, return blue. "
+    "If no face is visible, or if you cannot see the person's face well enough to judge expression, return red. "
     "Do not infer sensitive traits or identity. Do not guess health status, disability, ethnicity, religion, "
     "age, gender identity, socioeconomic class, or private attributes. "
-    "If the scene is ambiguous, prefer a slightly positive middle score rather than an overly strict result. "
+    "If the scene is ambiguous but a face is visible, prefer a middle score rather than an overly strict result. "
     "All user-facing strings must be natural Japanese. "
     "Return concise JSON only."
 )
@@ -33,6 +34,13 @@ FALLBACK_SCORE_RESULT = InterruptScoreResult(
     playfulSuggestion="5分後にもう一度だけ様子をうかがいましょう。",
     caution="これはジョーク判定です。重要な判断には使わないでください。",
 )
+
+NO_FACE_HEADLINE = "顔が見えないので赤です"
+NO_FACE_REASONS = ["顔が映っていません", "表情が読めないので赤判定にしました"]
+NO_FACE_SUGGESTION = "顔が見える場面で、もう一度だけ見てみましょう。"
+SMILE_HEADLINE = "笑顔なので青です"
+SMILE_REASONS = ["笑顔が見えます", "表情がやわらかく見えます"]
+SMILE_SUGGESTION = "今なら軽く話しかけてみましょう。"
 
 
 def _extract_text_json(payload: dict[str, Any]) -> str | None:
@@ -72,6 +80,30 @@ def _score_to_legacy_visual(result: InterruptScoreResult) -> OpenAIVisionResult:
     )
 
 
+def _apply_visibility_rules(parsed: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(parsed)
+    score = int(normalized["score"])
+    face_visible = bool(normalized.pop("faceVisible", True))
+    smiling = bool(normalized.pop("smiling", False))
+
+    if not face_visible:
+        normalized["score"] = min(score, 15)
+        normalized["signal"] = "red"
+        normalized["headline"] = NO_FACE_HEADLINE
+        normalized["reasons"] = NO_FACE_REASONS
+        normalized["playfulSuggestion"] = NO_FACE_SUGGESTION
+        return normalized
+
+    if smiling:
+        normalized["score"] = max(score, 75)
+        normalized["signal"] = "blue"
+        normalized["headline"] = SMILE_HEADLINE
+        normalized["reasons"] = SMILE_REASONS
+        normalized["playfulSuggestion"] = SMILE_SUGGESTION
+
+    return normalized
+
+
 async def score_interruptability(image_data_url: str, source_label: str = "unknown") -> InterruptScoreResult:
     if not settings.openai_api_key:
         return FALLBACK_SCORE_RESULT
@@ -93,7 +125,9 @@ async def score_interruptability(image_data_url: str, source_label: str = "unkno
                             "Score from 0 to 100, where 0 means definitely do not interrupt and "
                             "100 means probably safe to chat. "
                             "Map to red (0-24), yellow (25-59), blue (60-100). "
-                            "A visible smile should usually land in blue unless another strong cue says not to interrupt. "
+                            "If the person is smiling, even softly, set smiling=true and return blue. "
+                            "If no face is visible, set faceVisible=false and return red with a low score. "
+                            "Always decide faceVisible and smiling first from the image. "
                             "Give a short headline, exactly 2 short reasons based on visible evidence, "
                             "and one playful suggestion. "
                             "Write headline, reasons, playfulSuggestion, and caution in Japanese."
@@ -119,6 +153,8 @@ async def score_interruptability(image_data_url: str, source_label: str = "unkno
                         "score": {"type": "integer", "minimum": 0, "maximum": 100},
                         "signal": {"type": "string", "enum": ["red", "yellow", "blue"]},
                         "confidence": {"type": "integer", "minimum": 0, "maximum": 100},
+                        "faceVisible": {"type": "boolean"},
+                        "smiling": {"type": "boolean"},
                         "headline": {"type": "string"},
                         "reasons": {
                             "type": "array",
@@ -133,6 +169,8 @@ async def score_interruptability(image_data_url: str, source_label: str = "unkno
                         "score",
                         "signal",
                         "confidence",
+                        "faceVisible",
+                        "smiling",
                         "headline",
                         "reasons",
                         "playfulSuggestion",
@@ -163,7 +201,7 @@ async def score_interruptability(image_data_url: str, source_label: str = "unkno
             if not text_json:
                 continue
 
-            parsed = json.loads(text_json)
+            parsed = _apply_visibility_rules(json.loads(text_json))
             result = InterruptScoreResult.model_validate(parsed)
             if result.signal != _signal_from_score(result.score):
                 parsed["signal"] = _signal_from_score(int(parsed["score"]))
