@@ -7,7 +7,7 @@ import httpx
 from pydantic import ValidationError
 
 from app.config import settings
-from app.schemas import InterruptScoreResult, OpenAIVisionResult
+from app.schemas import InterruptScoreResult, JudgmentLevel, OpenAIVisionResult
 
 
 SYSTEM_PROMPT = (
@@ -41,6 +41,25 @@ NO_FACE_SUGGESTION = "顔が見える場面で、もう一度だけ見てみま�
 SMILE_HEADLINE = "笑顔なので青です"
 SMILE_REASONS = ["笑顔が見えます", "表情がやわらかく見えます"]
 SMILE_SUGGESTION = "今なら軽く話しかけてみましょう。"
+JUDGMENT_LEVEL_INSTRUCTIONS: dict[JudgmentLevel, str] = {
+    "strict": (
+        "Use a cautious threshold. "
+        "If the person looks even slightly busy, concentrated, or hard to read, lean red or yellow."
+    ),
+    "balanced": (
+        "Use a balanced threshold. "
+        "If the scene is mixed, prefer yellow before jumping to red."
+    ),
+    "lenient": (
+        "Use a friendly and permissive threshold. "
+        "If the face is visible and there is no strong sign of interruption risk, lean yellow or blue."
+    ),
+}
+JUDGMENT_LEVEL_SCORE_BIAS: dict[JudgmentLevel, int] = {
+    "strict": -12,
+    "balanced": 0,
+    "lenient": 12,
+}
 
 
 def _extract_text_json(payload: dict[str, Any]) -> str | None:
@@ -80,7 +99,15 @@ def _score_to_legacy_visual(result: InterruptScoreResult) -> OpenAIVisionResult:
     )
 
 
-def _apply_visibility_rules(parsed: dict[str, Any]) -> dict[str, Any]:
+def _clamp_score(score: int) -> int:
+    return max(0, min(100, score))
+
+
+def _apply_judgment_level(score: int, judgment_level: JudgmentLevel) -> int:
+    return _clamp_score(score + JUDGMENT_LEVEL_SCORE_BIAS[judgment_level])
+
+
+def _apply_visibility_rules(parsed: dict[str, Any], judgment_level: JudgmentLevel = "balanced") -> dict[str, Any]:
     normalized = dict(parsed)
     score = int(normalized["score"])
     face_visible = bool(normalized.pop("faceVisible", True))
@@ -100,11 +127,17 @@ def _apply_visibility_rules(parsed: dict[str, Any]) -> dict[str, Any]:
         normalized["headline"] = SMILE_HEADLINE
         normalized["reasons"] = SMILE_REASONS
         normalized["playfulSuggestion"] = SMILE_SUGGESTION
+        return normalized
 
+    normalized["score"] = _apply_judgment_level(score, judgment_level)
     return normalized
 
 
-async def score_interruptability(image_data_url: str, source_label: str = "unknown") -> InterruptScoreResult:
+async def score_interruptability(
+    image_data_url: str,
+    source_label: str = "unknown",
+    judgment_level: JudgmentLevel = "balanced",
+) -> InterruptScoreResult:
     if not settings.openai_api_key:
         return FALLBACK_SCORE_RESULT
 
@@ -122,11 +155,13 @@ async def score_interruptability(image_data_url: str, source_label: str = "unkno
                         "type": "input_text",
                         "text": (
                             f"Input source: {source_label}. "
+                            f"Judgment level: {judgment_level}. "
                             "Score from 0 to 100, where 0 means definitely do not interrupt and "
                             "100 means probably safe to chat. "
                             "Map to red (0-24), yellow (25-59), blue (60-100). "
                             "If the person is smiling, even softly, set smiling=true and return blue. "
                             "If no face is visible, set faceVisible=false and return red with a low score. "
+                            f"{JUDGMENT_LEVEL_INSTRUCTIONS[judgment_level]} "
                             "Always decide faceVisible and smiling first from the image. "
                             "Give a short headline, exactly 2 short reasons based on visible evidence, "
                             "and one playful suggestion. "
@@ -201,7 +236,7 @@ async def score_interruptability(image_data_url: str, source_label: str = "unkno
             if not text_json:
                 continue
 
-            parsed = _apply_visibility_rules(json.loads(text_json))
+            parsed = _apply_visibility_rules(json.loads(text_json), judgment_level)
             result = InterruptScoreResult.model_validate(parsed)
             if result.signal != _signal_from_score(result.score):
                 parsed["signal"] = _signal_from_score(int(parsed["score"]))

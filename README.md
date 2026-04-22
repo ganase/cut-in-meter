@@ -102,6 +102,7 @@ run_windows.bat
 - OpenAI Responses API による LLM 画像判定
 - 赤・黄・青の信号表示
 - 8 秒ごとの実況モード
+- 判定レベルの切り替え（慎重 / 標準 / ゆるめ）
 
 ## Environment Variables
 
@@ -115,7 +116,7 @@ run_windows.bat
 ## API
 
 - `GET /api/health`: ヘルスチェック
-- `POST /api/score`: 画像データ URL を受け取り、赤黄青の信号つきスコアを返す
+- `POST /api/score`: 画像データ URL と判定レベルを受け取り、赤黄青の信号つきスコアを返す
 - `POST /api/analyze/frame`: 既存互換の画像分析 API
 
 ## Notes

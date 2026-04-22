@@ -26,3 +26,16 @@ def test_interrupt_score_schema_validation() -> None:
         }
     )
     assert valid.score == 72
+
+
+def test_score_request_accepts_judgment_level() -> None:
+    from app.schemas import ScoreRequest
+
+    valid = ScoreRequest.model_validate(
+        {
+            "imageDataUrl": "data:image/jpeg;base64,abcdabcdabcdabcd",
+            "sourceLabel": "camera",
+            "judgmentLevel": "lenient",
+        }
+    )
+    assert valid.judgment_level == "lenient"

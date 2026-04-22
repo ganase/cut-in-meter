@@ -5,6 +5,7 @@ const analyzeButton = document.querySelector("#analyzeButton");
 const autoAnalyzeButton = document.querySelector("#autoAnalyzeButton");
 const manualSignalButtons = document.querySelectorAll("[data-manual-signal]");
 const autoAnalyzeIntervalInput = document.querySelector("#autoAnalyzeIntervalInput");
+const judgmentLevelSelect = document.querySelector("#judgmentLevelSelect");
 const fileInput = document.querySelector("#fileInput");
 const cameraPreview = document.querySelector("#cameraPreview");
 const uploadVideo = document.querySelector("#uploadVideo");
@@ -16,23 +17,33 @@ const videoScrubber = document.querySelector("#videoScrubber");
 const trafficLight = document.querySelector("#trafficLight");
 const scoreValue = document.querySelector("#scoreValue");
 const confidenceValue = document.querySelector("#confidenceValue");
-const resultAgeValue = document.querySelector("#resultAgeValue");
+const processingStateValue = document.querySelector("#processingStateValue");
+const nextAnalyzeValue = document.querySelector("#nextAnalyzeValue");
 const headline = document.querySelector("#headline");
 const reasons = document.querySelector("#reasons");
 const playfulSuggestion = document.querySelector("#playfulSuggestion");
 const caution = document.querySelector("#caution");
 const statusMessage = document.querySelector("#statusMessage");
 const workingCanvas = document.querySelector("#workingCanvas");
+const snapshotPanel = document.querySelector("#snapshotPanel");
+const snapshotPreview = document.querySelector("#snapshotPreview");
 
 let cameraStream = null;
 let currentSource = null;
 let autoAnalyzeTimer = null;
-let resultAgeTimer = null;
+let autoAnalyzeCountdownTimer = null;
 let analyzeInFlight = false;
-let lastGeneratedAtMs = null;
+let nextAutoAnalyzeAtMs = null;
 
-const AUTO_ANALYZE_DEFAULT_SECONDS = 30;
+const AUTO_ANALYZE_DEFAULT_SECONDS = 10;
 const AUTO_ANALYZE_MIN_SECONDS = 2;
+const CAPTURE_MAX_SIDE = 640;
+const CAPTURE_JPEG_QUALITY = 0.66;
+const JUDGMENT_LEVEL_LABELS = {
+  strict: "慎重",
+  balanced: "標準",
+  lenient: "ゆるめ",
+};
 const MANUAL_SIGNAL_CONTENT = {
   red: {
     label: "赤",
@@ -85,38 +96,57 @@ function syncAnalyzeControls() {
   autoAnalyzeButton.textContent = autoAnalyzeTimer === null ? "自動判定を開始" : "自動判定を停止";
 }
 
-function clearResultAgeTimer() {
-  if (resultAgeTimer !== null) {
-    window.clearInterval(resultAgeTimer);
-    resultAgeTimer = null;
+function currentJudgmentLevel() {
+  return judgmentLevelSelect.value in JUDGMENT_LEVEL_LABELS ? judgmentLevelSelect.value : "balanced";
+}
+
+function currentJudgmentLevelLabel() {
+  return JUDGMENT_LEVEL_LABELS[currentJudgmentLevel()];
+}
+
+function clearAutoAnalyzeCountdownTimer() {
+  if (autoAnalyzeCountdownTimer !== null) {
+    window.clearInterval(autoAnalyzeCountdownTimer);
+    autoAnalyzeCountdownTimer = null;
   }
 }
 
-function formatElapsedSeconds(timestampMs) {
-  const elapsedMs = Math.max(0, Date.now() - timestampMs);
-  const seconds = Math.floor(elapsedMs / 1000);
-  return `${seconds}秒前`;
+function formatCountdown(targetMs) {
+  const remainingMs = Math.max(0, targetMs - Date.now());
+  const seconds = Math.ceil(remainingMs / 1000);
+  return `${seconds}秒`;
 }
 
-function renderResultAge() {
-  if (lastGeneratedAtMs === null || Number.isNaN(lastGeneratedAtMs)) {
-    resultAgeValue.textContent = "--";
+function renderNextAnalyzeCountdown() {
+  if (autoAnalyzeTimer === null || nextAutoAnalyzeAtMs === null) {
+    nextAnalyzeValue.textContent = "--";
     return;
   }
-  resultAgeValue.textContent = formatElapsedSeconds(lastGeneratedAtMs);
+
+  nextAnalyzeValue.textContent = analyzeInFlight ? "判定中" : formatCountdown(nextAutoAnalyzeAtMs);
 }
 
-function currentResultAgeLabel() {
-  return lastGeneratedAtMs === null ? "たった今" : formatElapsedSeconds(lastGeneratedAtMs);
+function setProcessingState(label) {
+  processingStateValue.textContent = label;
 }
 
-function setResultTimestamp(timestamp) {
-  lastGeneratedAtMs = typeof timestamp === "number" && Number.isFinite(timestamp) ? timestamp : null;
-  clearResultAgeTimer();
-  renderResultAge();
-  if (lastGeneratedAtMs !== null) {
-    resultAgeTimer = window.setInterval(renderResultAge, 1000);
+function setNextAutoAnalyzeTimestamp(timestampMs) {
+  nextAutoAnalyzeAtMs = typeof timestampMs === "number" && Number.isFinite(timestampMs) ? timestampMs : null;
+  clearAutoAnalyzeCountdownTimer();
+  renderNextAnalyzeCountdown();
+  if (nextAutoAnalyzeAtMs !== null) {
+    autoAnalyzeCountdownTimer = window.setInterval(renderNextAnalyzeCountdown, 1000);
   }
+}
+
+function showSnapshot(imageDataUrl) {
+  snapshotPreview.src = imageDataUrl;
+  snapshotPanel.classList.remove("hidden");
+}
+
+function clearSnapshot() {
+  snapshotPreview.removeAttribute("src");
+  snapshotPanel.classList.add("hidden");
 }
 
 function setReasons(items) {
@@ -143,7 +173,8 @@ function setManualSignal(signal) {
   setReasons(content.reasons);
   playfulSuggestion.textContent = content.playfulSuggestion;
   caution.textContent = "手動で信号を変更しています。AI判定を行うと結果は上書きされます。";
-  setResultTimestamp(null);
+  clearSnapshot();
+  setProcessingState("手動設定");
   setStatus(`手動で${content.label}信号に切り替えました。`);
 }
 
@@ -154,10 +185,13 @@ function showEmptyState() {
   emptyPreview.classList.remove("hidden");
   videoScrubberWrap.classList.add("hidden");
   currentSource = null;
+  startCameraButton.disabled = false;
   captureButton.disabled = true;
   stopCameraButton.disabled = true;
   setSource("ソース未選択");
-  setResultTimestamp(null);
+  clearSnapshot();
+  setProcessingState("待機中");
+  setNextAutoAnalyzeTimestamp(null);
   syncAnalyzeControls();
 }
 
@@ -174,6 +208,7 @@ function stopAutoAnalyze() {
     window.clearInterval(autoAnalyzeTimer);
     autoAnalyzeTimer = null;
   }
+  setNextAutoAnalyzeTimestamp(null);
   syncAnalyzeControls();
 }
 
@@ -186,8 +221,10 @@ function startAutoAnalyzeInterval() {
   stopAutoAnalyze();
   const seconds = normalizeAutoAnalyzeSeconds();
   autoAnalyzeTimer = window.setInterval(() => {
+    setNextAutoAnalyzeTimestamp(Date.now() + seconds * 1000);
     void analyzeCurrentFrame({ silentIfBusy: true });
   }, seconds * 1000);
+  setNextAutoAnalyzeTimestamp(Date.now() + seconds * 1000);
   syncAnalyzeControls();
 }
 
@@ -203,18 +240,66 @@ function stopCamera() {
   if (!currentSource || currentSource.kind === "camera") {
     showEmptyState();
   } else {
+    startCameraButton.disabled = false;
     stopCameraButton.disabled = true;
     captureButton.disabled = true;
   }
 }
 
-async function startCamera() {
+async function requestCameraStream() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new DOMException("getUserMedia is not available in this browser context.", "NotSupportedError");
+  }
+
   try {
-    stopCamera();
-    const stream = await navigator.mediaDevices.getUserMedia({
+    return await navigator.mediaDevices.getUserMedia({
       video: { facingMode: "user" },
       audio: false,
     });
+  } catch (error) {
+    if (error.name !== "OverconstrainedError" && error.name !== "ConstraintNotSatisfiedError") {
+      throw error;
+    }
+    return navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: false,
+    });
+  }
+}
+
+function cameraErrorMessage(error) {
+  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+    return "カメラを開始できませんでした。http://127.0.0.1:8000、http://localhost:8000、または https のページで開いてください。";
+  }
+
+  switch (error.name) {
+    case "NotAllowedError":
+    case "SecurityError":
+      return "カメラを開始できませんでした。ブラウザまたはOSのカメラ権限が拒否されています。";
+    case "NotFoundError":
+    case "DevicesNotFoundError":
+      return "カメラを開始できませんでした。利用できるカメラが見つかりません。";
+    case "NotReadableError":
+    case "TrackStartError":
+      return "カメラを開始できませんでした。他のアプリがカメラを使用中の可能性があります。";
+    case "OverconstrainedError":
+    case "ConstraintNotSatisfiedError":
+      return "カメラを開始できませんでした。ブラウザが要求されたカメラ設定に対応していません。";
+    default:
+      return `カメラを開始できませんでした。${error.name || "UnknownError"}: ${error.message || "権限設定を確認してください。"}`;
+  }
+}
+
+async function startCamera() {
+  setProcessingState("カメラ起動中");
+  setStatus("カメラを起動しています...");
+  startCameraButton.disabled = true;
+
+  try {
+    stopCamera();
+    setProcessingState("カメラ起動中");
+    setStatus("カメラを起動しています...");
+    const stream = await requestCameraStream();
 
     cameraStream = stream;
     hideAllMedia();
@@ -225,10 +310,13 @@ async function startCamera() {
     stopCameraButton.disabled = false;
     captureButton.disabled = false;
     syncAnalyzeControls();
+    setProcessingState("カメラ待機");
     setStatus("カメラの準備ができました。AIで判定を押すと自動更新が始まります。");
   } catch (error) {
     console.error(error);
-    setStatus("カメラを開始できませんでした。権限設定を確認してください。");
+    startCameraButton.disabled = false;
+    setProcessingState("カメラ失敗");
+    setStatus(cameraErrorMessage(error));
   }
 }
 
@@ -236,12 +324,11 @@ function drawMediaToCanvas(element) {
   const context = workingCanvas.getContext("2d");
   const sourceWidth = element.videoWidth || element.naturalWidth || element.width;
   const sourceHeight = element.videoHeight || element.naturalHeight || element.height;
-  const maxSide = 1280;
-  const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
+  const scale = Math.min(1, CAPTURE_MAX_SIDE / Math.max(sourceWidth, sourceHeight));
   workingCanvas.width = Math.max(1, Math.round(sourceWidth * scale));
   workingCanvas.height = Math.max(1, Math.round(sourceHeight * scale));
   context.drawImage(element, 0, 0, workingCanvas.width, workingCanvas.height);
-  return workingCanvas.toDataURL("image/jpeg", 0.86);
+  return workingCanvas.toDataURL("image/jpeg", CAPTURE_JPEG_QUALITY);
 }
 
 async function captureCurrentFrame() {
@@ -268,7 +355,7 @@ function updateResult(result) {
   setReasons(result.reasons);
   playfulSuggestion.textContent = result.playfulSuggestion;
   caution.textContent = result.caution;
-  setResultTimestamp(Date.parse(result.generatedAt));
+  setProcessingState("結果を反映");
 }
 
 async function analyzeCurrentFrame(options = {}) {
@@ -281,14 +368,19 @@ async function analyzeCurrentFrame(options = {}) {
     return;
   }
 
+  setProcessingState("フレーム取得中");
   const imageDataUrl = await captureCurrentFrame();
   if (!imageDataUrl) {
+    setProcessingState("待機中");
     setStatus("先にカメラまたはファイルを選択してください。");
     return;
   }
+  showSnapshot(imageDataUrl);
 
   analyzeInFlight = true;
   analyzeButton.disabled = true;
+  renderNextAnalyzeCountdown();
+  setProcessingState("AIに送信中");
   setStatus("AIが判定中です...");
 
   try {
@@ -298,19 +390,28 @@ async function analyzeCurrentFrame(options = {}) {
       body: JSON.stringify({
         imageDataUrl,
         sourceLabel: sourceLabel.textContent,
+        judgmentLevel: currentJudgmentLevel(),
       }),
     });
+    setProcessingState("応答を確認中");
     const payload = await response.json();
     if (!response.ok) {
       throw new Error(payload.error || "Unknown API error");
     }
     updateResult(payload);
-    setStatus(`${payload.model} が判定しました。最終判定は ${currentResultAgeLabel()} です。`);
+    setStatus(`${payload.model} が${currentJudgmentLevelLabel()}で判定しました。`);
   } catch (error) {
     console.error(error);
+    setProcessingState("失敗");
     setStatus(`判定に失敗しました: ${error.message}`);
   } finally {
     analyzeInFlight = false;
+    if (autoAnalyzeTimer === null) {
+      setProcessingState("判定完了");
+    } else {
+      setProcessingState("自動判定待ち");
+    }
+    renderNextAnalyzeCountdown();
     syncAnalyzeControls();
   }
 }
@@ -325,6 +426,7 @@ function onVideoScrub() {
 async function loadFile(file) {
   stopAutoAnalyze();
   releaseCurrentObjectUrl();
+  clearSnapshot();
 
   if (!file) {
     showEmptyState();
@@ -343,6 +445,7 @@ async function loadFile(file) {
     videoScrubberWrap.classList.add("hidden");
     setSource(`画像ファイル: ${file.name}`);
     syncAnalyzeControls();
+    setProcessingState("画像読み込み中");
     setStatus("画像を読み込み中です...");
     return;
   }
@@ -357,12 +460,14 @@ async function loadFile(file) {
     videoScrubberWrap.classList.remove("hidden");
     setSource(`動画ファイル: ${file.name}`);
     syncAnalyzeControls();
+    setProcessingState("動画読み込み中");
     setStatus("動画を読み込み中です...");
     return;
   }
 
   currentSource = null;
   syncAnalyzeControls();
+  setProcessingState("待機中");
   setStatus("未対応のファイル形式です。画像か動画を選択してください。");
 }
 
@@ -381,14 +486,16 @@ captureButton.addEventListener("click", async () => {
   captureButton.disabled = true;
   stopCameraButton.disabled = false;
   setSource("カメラ静止画");
+  clearSnapshot();
   syncAnalyzeControls();
+  setProcessingState("静止画固定");
   setStatus("カメラ映像を静止画として固定しました。");
 });
 
 analyzeButton.addEventListener("click", () => {
   if (canAutoAnalyze()) {
     startAutoAnalyzeInterval();
-    setStatus(`自動判定中です。${normalizeAutoAnalyzeSeconds()}秒ごとに再判定します。`);
+    setStatus(`自動判定中です。${normalizeAutoAnalyzeSeconds()}秒ごとに${currentJudgmentLevelLabel()}で再判定します。`);
   }
   void analyzeCurrentFrame();
 });
@@ -400,12 +507,13 @@ autoAnalyzeButton.addEventListener("click", () => {
 
   if (autoAnalyzeTimer !== null) {
     stopAutoAnalyze();
+    setProcessingState("待機中");
     setStatus("自動判定を停止しました。");
     return;
   }
 
   startAutoAnalyzeInterval();
-  setStatus(`自動判定中です。${normalizeAutoAnalyzeSeconds()}秒ごとに再判定します。`);
+  setStatus(`自動判定中です。${normalizeAutoAnalyzeSeconds()}秒ごとに${currentJudgmentLevelLabel()}で再判定します。`);
   void analyzeCurrentFrame({ silentIfBusy: true });
 });
 
@@ -416,7 +524,17 @@ autoAnalyzeIntervalInput.addEventListener("change", () => {
   }
 
   startAutoAnalyzeInterval();
-  setStatus(`自動判定中です。${seconds}秒ごとに再判定します。`);
+  setStatus(`自動判定中です。${seconds}秒ごとに${currentJudgmentLevelLabel()}で再判定します。`);
+});
+
+judgmentLevelSelect.addEventListener("change", () => {
+  const label = currentJudgmentLevelLabel();
+  if (autoAnalyzeTimer === null) {
+    setStatus(`判定レベルを${label}に変更しました。次回の判定から反映されます。`);
+    return;
+  }
+
+  setStatus(`自動判定中です。${normalizeAutoAnalyzeSeconds()}秒ごとに${label}で再判定します。`);
 });
 
 manualSignalButtons.forEach((button) => {
@@ -435,6 +553,7 @@ videoScrubber.addEventListener("input", onVideoScrub);
 uploadVideo.addEventListener("loadedmetadata", () => {
   videoScrubber.value = "0";
   syncAnalyzeControls();
+  setProcessingState("判定待ち");
   setStatus("動画を読み込みました。再生位置のフレームで判定します。");
 });
 
@@ -447,11 +566,12 @@ uploadVideo.addEventListener("timeupdate", () => {
 
 imagePreview.addEventListener("load", () => {
   syncAnalyzeControls();
+  setProcessingState("判定待ち");
   setStatus("画像を読み込みました。AIで判定できます。");
 });
 
 window.addEventListener("beforeunload", () => {
-  clearResultAgeTimer();
+  clearAutoAnalyzeCountdownTimer();
   stopCamera();
 });
 

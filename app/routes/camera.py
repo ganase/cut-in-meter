@@ -13,12 +13,13 @@ router = APIRouter(tags=["camera"])
 
 @router.post("/api/score", response_model=ScoreResponse)
 async def score_image(req: ScoreRequest) -> ScoreResponse:
-    result = await score_interruptability(req.image_data_url, req.source_label)
+    result = await score_interruptability(req.image_data_url, req.source_label, req.judgment_level)
     return ScoreResponse(
         **result.model_dump(by_alias=True),
         model=settings.openai_model,
         sourceLabel=req.source_label,
         generatedAt=datetime.now(timezone.utc),
+        judgmentLevel=req.judgment_level,
     )
 
 

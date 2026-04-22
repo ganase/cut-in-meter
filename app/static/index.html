@@ -43,8 +43,12 @@
               <p id="confidenceValue" class="metric-small">--</p>
             </div>
             <div>
-              <p class="metric-label">判定から</p>
-              <p id="resultAgeValue" class="metric-small">--</p>
+              <p class="metric-label">処理状態</p>
+              <p id="processingStateValue" class="metric-small">待機中</p>
+            </div>
+            <div>
+              <p class="metric-label">次の自動判定まで</p>
+              <p id="nextAnalyzeValue" class="metric-small">--</p>
             </div>
           </div>
         </section>
@@ -78,9 +82,18 @@
               type="number"
               min="2"
               step="1"
-              value="30"
+              value="10"
               inputmode="numeric"
             />
+          </label>
+
+          <label class="interval-control" for="judgmentLevelSelect">
+            <span>判定レベル</span>
+            <select id="judgmentLevelSelect">
+              <option value="strict">慎重</option>
+              <option value="balanced" selected>標準</option>
+              <option value="lenient">ゆるめ</option>
+            </select>
           </label>
 
           <div class="button-row">
@@ -112,6 +125,11 @@
               ここにカメラ映像または選択したメディアが表示されます
             </div>
           </div>
+
+          <div id="snapshotPanel" class="snapshot-panel hidden">
+            <p class="metric-label">判定スナップショット</p>
+            <img id="snapshotPreview" alt="snapshot sent to AI" />
+          </div>
         </section>
       </section>
 
@@ -119,6 +137,6 @@
     </main>
 
     <canvas id="workingCanvas" class="hidden"></canvas>
-    <script type="module" src="/static/app.js"></script>
+    <script type="module" src="/static/app.js?v=20260422-camera-2"></script>
   </body>
 </html>

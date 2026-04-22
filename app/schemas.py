@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+JudgmentLevel = Literal["strict", "balanced", "lenient"]
+
 
 class HealthResponse(BaseModel):
     status: str = "ok"
@@ -22,6 +24,7 @@ class AnalyzeFrameRequest(BaseModel):
 class ScoreRequest(BaseModel):
     image_data_url: str = Field(min_length=20, alias="imageDataUrl")
     source_label: str = Field(default="unknown", alias="sourceLabel")
+    judgment_level: JudgmentLevel = Field(default="balanced", alias="judgmentLevel")
 
 
 class InterruptScoreResult(BaseModel):
@@ -38,6 +41,7 @@ class ScoreResponse(InterruptScoreResult):
     model: str
     source_label: str = Field(alias="sourceLabel")
     generated_at: datetime = Field(alias="generatedAt")
+    judgment_level: JudgmentLevel = Field(alias="judgmentLevel")
 
 
 class AnalyzeFrameResponse(BaseModel):
