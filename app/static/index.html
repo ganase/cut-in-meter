@@ -61,7 +61,7 @@
 
           <div class="button-row">
             <button id="startCameraButton" class="button primary">カメラ開始</button>
-            <button id="stopCameraButton" class="button ghost" disabled>停止</button>
+            <button id="stopCameraButton" class="button ghost" disabled>停止して再起動</button>
             <button id="captureButton" class="button ghost" disabled>今のフレームを固定</button>
           </div>
 
@@ -94,6 +94,11 @@
               <option value="balanced" selected>標準</option>
               <option value="lenient">ゆるめ</option>
             </select>
+          </label>
+
+          <label class="interval-control" for="deviceNameInput">
+            <span>デバイス名</span>
+            <input id="deviceNameInput" type="text" maxlength="40" placeholder="例: MyPC" autocomplete="off" />
           </label>
 
           <div class="button-row">
@@ -131,12 +136,23 @@
             <img id="snapshotPreview" alt="snapshot sent to AI" />
           </div>
         </section>
+
+        <section class="card chart-panel">
+          <div class="section-title">
+            <h2>スコア推移（分平均）</h2>
+            <p id="chartDateLabel"></p>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="scoreChart"></canvas>
+          </div>
+        </section>
       </section>
 
       <p id="statusMessage" class="status app-status">AI待機中</p>
     </main>
 
     <canvas id="workingCanvas" class="hidden"></canvas>
-    <script type="module" src="/static/app.js?v=20260422-camera-2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script type="module" src="/static/app.js?v=20260423-data-1"></script>
   </body>
 </html>

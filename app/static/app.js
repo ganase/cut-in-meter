@@ -6,6 +6,7 @@ const autoAnalyzeButton = document.querySelector("#autoAnalyzeButton");
 const manualSignalButtons = document.querySelectorAll("[data-manual-signal]");
 const autoAnalyzeIntervalInput = document.querySelector("#autoAnalyzeIntervalInput");
 const judgmentLevelSelect = document.querySelector("#judgmentLevelSelect");
+const deviceNameInput = document.querySelector("#deviceNameInput");
 const fileInput = document.querySelector("#fileInput");
 const cameraPreview = document.querySelector("#cameraPreview");
 const uploadVideo = document.querySelector("#uploadVideo");
@@ -27,6 +28,8 @@ const statusMessage = document.querySelector("#statusMessage");
 const workingCanvas = document.querySelector("#workingCanvas");
 const snapshotPanel = document.querySelector("#snapshotPanel");
 const snapshotPreview = document.querySelector("#snapshotPreview");
+const scoreChartCanvas = document.querySelector("#scoreChart");
+const chartDateLabel = document.querySelector("#chartDateLabel");
 
 let cameraStream = null;
 let currentSource = null;
@@ -34,10 +37,12 @@ let autoAnalyzeTimer = null;
 let autoAnalyzeCountdownTimer = null;
 let analyzeInFlight = false;
 let nextAutoAnalyzeAtMs = null;
+let scoreHistory = [];
+let scoreChart = null;
 
 const AUTO_ANALYZE_DEFAULT_SECONDS = 10;
 const AUTO_ANALYZE_MIN_SECONDS = 2;
-const CAPTURE_MAX_SIDE = 640;
+const CAPTURE_MAX_SIDE = 320;
 const CAPTURE_JPEG_QUALITY = 0.66;
 const JUDGMENT_LEVEL_LABELS = {
   strict: "慎重",
@@ -64,6 +69,136 @@ const MANUAL_SIGNAL_CONTENT = {
     playfulSuggestion: "軽く一言だけ、テンポよく話しかけましょう。",
   },
 };
+
+// ── デバイス名管理 ──────────────────────────────────────
+
+function getDeviceName() {
+  return deviceNameInput.value.trim() || "PC";
+}
+
+function initDeviceName() {
+  let name = localStorage.getItem("cutInMeterDeviceName");
+  if (!name) {
+    const rand = Math.random().toString(36).slice(2, 10).toUpperCase();
+    name = `PC-${rand}`;
+    localStorage.setItem("cutInMeterDeviceName", name);
+  }
+  deviceNameInput.value = name;
+}
+
+deviceNameInput.addEventListener("change", () => {
+  const name = deviceNameInput.value.trim();
+  if (name) {
+    localStorage.setItem("cutInMeterDeviceName", name);
+  }
+});
+
+// ── チャート ─────────────────────────────────────────────
+
+function scoreToColor(score) {
+  if (score >= 60) return "#1989d6";
+  if (score >= 25) return "#d59a18";
+  return "#cb2f2f";
+}
+
+function initChart() {
+  const ctx = scoreChartCanvas.getContext("2d");
+  scoreChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [
+        {
+          label: "分平均スコア",
+          data: [],
+          borderColor: "#0f766e",
+          backgroundColor: "rgba(15, 118, 110, 0.08)",
+          tension: 0.35,
+          fill: true,
+          pointBackgroundColor: [],
+          pointRadius: 0,
+          pointHoverRadius: 0,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: {
+          min: 0,
+          max: 100,
+          grid: { color: "rgba(22,22,20,0.07)" },
+          ticks: {
+            font: { family: "IBM Plex Sans", size: 12 },
+            color: "#5c6255",
+            stepSize: 25,
+          },
+        },
+        x: {
+          grid: { color: "rgba(22,22,20,0.07)" },
+          ticks: {
+            font: { family: "IBM Plex Sans", size: 12 },
+            color: "#5c6255",
+            maxRotation: 0,
+          },
+        },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `スコア: ${ctx.parsed.y}`,
+          },
+        },
+      },
+      animation: { duration: 300 },
+    },
+  });
+
+  const today = new Date();
+  chartDateLabel.textContent = `${today.getFullYear()}/${today.getMonth() + 1}/${today.getDate()}`;
+}
+
+function computeMinuteAverages() {
+  const buckets = {};
+  for (const { timestamp, score } of scoreHistory) {
+    const dt = new Date(timestamp);
+    const key = `${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`;
+    if (!buckets[key]) buckets[key] = [];
+    buckets[key].push(score);
+  }
+  return Object.entries(buckets)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([minute, scores]) => ({
+      minute,
+      avgScore: Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10,
+    }));
+}
+
+function refreshChart() {
+  if (!scoreChart) return;
+  const data = computeMinuteAverages();
+  scoreChart.data.labels = data.map((d) => d.minute);
+  scoreChart.data.datasets[0].data = data.map((d) => d.avgScore);
+  scoreChart.data.datasets[0].pointBackgroundColor = data.map((d) => scoreToColor(d.avgScore));
+  scoreChart.update();
+}
+
+async function loadTodayHistory() {
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    const res = await fetch(`/api/stats?date=${today}`);
+    if (!res.ok) return;
+    const { records } = await res.json();
+    scoreHistory = records.map((r) => ({ timestamp: r.timestamp, score: Number(r.score) }));
+    refreshChart();
+  } catch (e) {
+    console.warn("履歴の読み込みに失敗しました", e);
+  }
+}
+
+// ── 共通ユーティリティ ───────────────────────────────────
 
 function releaseCurrentObjectUrl() {
   if (currentSource?.objectUrl) {
@@ -391,6 +526,7 @@ async function analyzeCurrentFrame(options = {}) {
         imageDataUrl,
         sourceLabel: sourceLabel.textContent,
         judgmentLevel: currentJudgmentLevel(),
+        deviceName: getDeviceName(),
       }),
     });
     setProcessingState("応答を確認中");
@@ -400,6 +536,11 @@ async function analyzeCurrentFrame(options = {}) {
     }
     updateResult(payload);
     setStatus(`${payload.model} が${currentJudgmentLevelLabel()}で判定しました。`);
+
+    // チャートにデータ追加
+    const ts = payload.generatedAt || new Date().toISOString();
+    scoreHistory.push({ timestamp: ts, score: payload.score });
+    refreshChart();
   } catch (error) {
     console.error(error);
     setProcessingState("失敗");
@@ -471,8 +612,28 @@ async function loadFile(file) {
   setStatus("未対応のファイル形式です。画像か動画を選択してください。");
 }
 
+// ── イベントリスナー ─────────────────────────────────────
+
 startCameraButton.addEventListener("click", startCamera);
-stopCameraButton.addEventListener("click", stopCamera);
+
+// 停止ボタン: 自動判定が動いているときはカメラを再起動して継続
+stopCameraButton.addEventListener("click", async () => {
+  const wasAutoAnalyzing = autoAnalyzeTimer !== null;
+  if (cameraStream) {
+    for (const track of cameraStream.getTracks()) {
+      track.stop();
+    }
+    cameraStream = null;
+  }
+  cameraPreview.srcObject = null;
+  stopAutoAnalyze();
+  await startCamera();
+  if (wasAutoAnalyzing) {
+    startAutoAnalyzeInterval();
+    void analyzeCurrentFrame({ silentIfBusy: true });
+  }
+});
+
 captureButton.addEventListener("click", async () => {
   if (!cameraStream) {
     return;
@@ -575,6 +736,11 @@ window.addEventListener("beforeunload", () => {
   stopCamera();
 });
 
+// ── 初期化 ───────────────────────────────────────────────
+
 autoAnalyzeIntervalInput.value = String(AUTO_ANALYZE_DEFAULT_SECONDS);
 window.setManualSignal = setManualSignal;
 showEmptyState();
+initDeviceName();
+initChart();
+void loadTodayHistory();

@@ -7,12 +7,14 @@ from fastapi.responses import FileResponse
 from app.config import settings
 from app.routes.health import router as health_router
 from app.routes.camera import router as camera_router
+from app.routes.stats import router as stats_router
 
 
 app = FastAPI(title=settings.app_name)
 
 app.include_router(health_router)
 app.include_router(camera_router)
+app.include_router(stats_router)
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 

@@ -69,9 +69,15 @@ body {
 .metrics-panel,
 .controls,
 .preview-panel,
-.details-panel {
+.details-panel,
+.chart-panel {
   padding: 22px;
   min-width: 0;
+}
+
+.chart-wrap {
+  position: relative;
+  height: 240px;
 }
 
 .section-title {
@@ -172,6 +178,10 @@ body {
   background: rgba(255, 255, 255, 0.72);
   color: var(--ink);
   font: inherit;
+}
+
+.interval-control input[type="text"] {
+  width: 200px;
 }
 
 .scrubber {
@@ -391,6 +401,11 @@ body {
     grid-column: 1 / -1;
     grid-row: 3;
   }
+
+  .chart-panel {
+    grid-column: 1 / -1;
+    grid-row: 4;
+  }
 }
 
 @media (max-width: 640px) {
@@ -412,7 +427,8 @@ body {
   }
 
   .interval-control input,
-  .interval-control select {
+  .interval-control select,
+  .interval-control input[type="text"] {
     width: 100%;
   }
 

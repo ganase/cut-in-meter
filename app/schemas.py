@@ -25,6 +25,7 @@ class ScoreRequest(BaseModel):
     image_data_url: str = Field(min_length=20, alias="imageDataUrl")
     source_label: str = Field(default="unknown", alias="sourceLabel")
     judgment_level: JudgmentLevel = Field(default="balanced", alias="judgmentLevel")
+    device_name: str = Field(default="unknown", alias="deviceName")
 
 
 class InterruptScoreResult(BaseModel):
@@ -38,6 +39,7 @@ class InterruptScoreResult(BaseModel):
 
 
 class ScoreResponse(InterruptScoreResult):
+    record_id: str = Field(alias="recordId")
     model: str
     source_label: str = Field(alias="sourceLabel")
     generated_at: datetime = Field(alias="generatedAt")
