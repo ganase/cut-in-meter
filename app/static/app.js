@@ -1,54 +1,58 @@
-const startCameraButton = document.querySelector("#startCameraButton");
-const stopCameraButton = document.querySelector("#stopCameraButton");
-const captureButton = document.querySelector("#captureButton");
-const analyzeButton = document.querySelector("#analyzeButton");
-const autoAnalyzeButton = document.querySelector("#autoAnalyzeButton");
-const manualSignalButtons = document.querySelectorAll("[data-manual-signal]");
+// ── DOM 参照 ─────────────────────────────────────────────
+const startCameraButton    = document.querySelector("#startCameraButton");
+const stopCameraButton     = document.querySelector("#stopCameraButton");
+const captureButton        = document.querySelector("#captureButton");
+const analyzeButton        = document.querySelector("#analyzeButton");
+const autoAnalyzeButton    = document.querySelector("#autoAnalyzeButton");
+const manualSignalButtons  = document.querySelectorAll("[data-manual-signal]");
 const autoAnalyzeIntervalInput = document.querySelector("#autoAnalyzeIntervalInput");
-const judgmentLevelSelect = document.querySelector("#judgmentLevelSelect");
-const deviceNameInput = document.querySelector("#deviceNameInput");
-const fileInput = document.querySelector("#fileInput");
-const cameraPreview = document.querySelector("#cameraPreview");
-const uploadVideo = document.querySelector("#uploadVideo");
-const imagePreview = document.querySelector("#imagePreview");
-const emptyPreview = document.querySelector("#emptyPreview");
-const sourceLabel = document.querySelector("#sourceLabel");
-const videoScrubberWrap = document.querySelector("#videoScrubberWrap");
-const videoScrubber = document.querySelector("#videoScrubber");
-const trafficLight = document.querySelector("#trafficLight");
-const scoreValue = document.querySelector("#scoreValue");
-const confidenceValue = document.querySelector("#confidenceValue");
+const judgmentLevelSelect  = document.querySelector("#judgmentLevelSelect");
+const deviceNameInput      = document.querySelector("#deviceNameInput");
+const fileInput            = document.querySelector("#fileInput");
+const cameraPreview        = document.querySelector("#cameraPreview");
+const uploadVideo          = document.querySelector("#uploadVideo");
+const imagePreview         = document.querySelector("#imagePreview");
+const emptyPreview         = document.querySelector("#emptyPreview");
+const sourceLabel          = document.querySelector("#sourceLabel");
+const videoScrubberWrap    = document.querySelector("#videoScrubberWrap");
+const videoScrubber        = document.querySelector("#videoScrubber");
+const trafficLight         = document.querySelector("#trafficLight");
+const scoreValue           = document.querySelector("#scoreValue");
+const confidenceValue      = document.querySelector("#confidenceValue");
 const processingStateValue = document.querySelector("#processingStateValue");
-const nextAnalyzeValue = document.querySelector("#nextAnalyzeValue");
-const headline = document.querySelector("#headline");
-const reasons = document.querySelector("#reasons");
-const playfulSuggestion = document.querySelector("#playfulSuggestion");
-const caution = document.querySelector("#caution");
-const statusMessage = document.querySelector("#statusMessage");
-const workingCanvas = document.querySelector("#workingCanvas");
-const snapshotPanel = document.querySelector("#snapshotPanel");
-const snapshotPreview = document.querySelector("#snapshotPreview");
-const scoreChartCanvas = document.querySelector("#scoreChart");
-const chartDateLabel = document.querySelector("#chartDateLabel");
+const nextAnalyzeValue     = document.querySelector("#nextAnalyzeValue");
+const reasons              = document.querySelector("#reasons");
+const playfulSuggestion    = document.querySelector("#playfulSuggestion");
+const statusMessage        = document.querySelector("#statusMessage");
+const workingCanvas        = document.querySelector("#workingCanvas");
+const snapshotPanel        = document.querySelector("#snapshotPanel");
+const snapshotPreview      = document.querySelector("#snapshotPreview");
+const scoreChartCanvas     = document.querySelector("#scoreChart");
+const chartDateLabel       = document.querySelector("#chartDateLabel");
 
-let cameraStream = null;
-let currentSource = null;
-let autoAnalyzeTimer = null;
-let autoAnalyzeCountdownTimer = null;
-let analyzeInFlight = false;
-let nextAutoAnalyzeAtMs = null;
-let scoreHistory = [];
-let scoreChart = null;
+// 新規: ヘッダー・テーマ・最小化・ミニウィジェット
+const minimizeButton = document.querySelector("#minimizeButton");
+const restoreButton  = document.querySelector("#restoreButton");
+const themeButton    = document.querySelector("#themeButton");
+const themeIcon      = document.querySelector("#themeIcon");
+const miniWidget     = document.querySelector("#miniWidget");
+const miniDot        = document.querySelector("#miniDot");
+const miniScore      = document.querySelector("#miniScore");
+const miniHl         = document.querySelector("#miniHl");
+const logoSignal     = document.querySelector("#logoSignal");
 
+// ── 定数 ──────────────────────────────────────────────────
 const AUTO_ANALYZE_DEFAULT_SECONDS = 10;
 const AUTO_ANALYZE_MIN_SECONDS = 2;
 const CAPTURE_MAX_SIDE = 320;
 const CAPTURE_JPEG_QUALITY = 0.66;
+
 const JUDGMENT_LEVEL_LABELS = {
-  strict: "慎重",
+  strict:   "慎重",
   balanced: "標準",
-  lenient: "ゆるめ",
+  lenient:  "ゆるめ",
 };
+
 const MANUAL_SIGNAL_CONTENT = {
   red: {
     label: "赤",
@@ -70,7 +74,79 @@ const MANUAL_SIGNAL_CONTENT = {
   },
 };
 
-// ── デバイス名管理 ──────────────────────────────────────
+// ── テーマ ────────────────────────────────────────────────
+
+const THEMES = ["warm", "dark", "cool"];
+
+const THEME_ICONS = {
+  warm: `<circle cx="8" cy="8" r="3" fill="currentColor"/>
+         <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.22 3.22l1.42 1.42M11.36 11.36l1.42 1.42M11.36 4.64l1.42-1.42M3.22 12.78l1.42-1.42"
+               stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>`,
+  dark: `<path d="M13.5 10.5A6 6 0 1 1 5.5 2.5a4.5 4.5 0 0 0 8 8z"
+               fill="currentColor"/>`,
+  cool: `<path d="M8 1v14M1 8h14M3.1 3.1l9.8 9.8M12.9 3.1 3.1 12.9"
+               stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>`,
+};
+
+function getCurrentTheme() {
+  return document.documentElement.dataset.theme || "warm";
+}
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem("cutInMeterTheme", theme);
+  themeIcon.innerHTML = THEME_ICONS[theme];
+}
+
+function cycleTheme() {
+  const current = getCurrentTheme();
+  const idx = THEMES.indexOf(current);
+  applyTheme(THEMES[(idx + 1) % THEMES.length]);
+}
+
+function initTheme() {
+  const saved = localStorage.getItem("cutInMeterTheme");
+  applyTheme(THEMES.includes(saved) ? saved : "warm");
+}
+
+themeButton.addEventListener("click", cycleTheme);
+
+// ── 最小化 ────────────────────────────────────────────────
+
+function minimize() {
+  document.documentElement.classList.add("minimized");
+  miniWidget.hidden = false;
+}
+
+function restore() {
+  document.documentElement.classList.remove("minimized");
+  miniWidget.hidden = true;
+}
+
+minimizeButton.addEventListener("click", minimize);
+restoreButton.addEventListener("click", restore);
+
+// ── シグナル同期（ヘッダードット + ミニウィジェット） ────
+
+function syncSignalUI(signal, scoreText, headlineText) {
+  // ヘッダーのロゴドット
+  logoSignal.dataset.signal = signal || "";
+
+  // スコア値の色
+  const colorMap = {
+    red:    "var(--red)",
+    yellow: "var(--yellow)",
+    blue:   "var(--blue)",
+  };
+  scoreValue.style.color = colorMap[signal] || "";
+
+  // ミニウィジェット
+  miniDot.dataset.signal  = signal || "";
+  miniScore.textContent   = scoreText  ?? "--";
+  miniHl.textContent      = headlineText ?? "判定待ち";
+}
+
+// ── デバイス名管理 ────────────────────────────────────────
 
 function getDeviceName() {
   return deviceNameInput.value.trim() || "PC";
@@ -88,18 +164,19 @@ function initDeviceName() {
 
 deviceNameInput.addEventListener("change", () => {
   const name = deviceNameInput.value.trim();
-  if (name) {
-    localStorage.setItem("cutInMeterDeviceName", name);
-  }
+  if (name) localStorage.setItem("cutInMeterDeviceName", name);
 });
 
-// ── チャート ─────────────────────────────────────────────
+// ── チャート ──────────────────────────────────────────────
 
 function scoreToColor(score) {
-  if (score >= 60) return "#1989d6";
-  if (score >= 25) return "#d59a18";
-  return "#cb2f2f";
+  if (score >= 60) return "#1878c8";
+  if (score >= 25) return "#c9900d";
+  return "#c83030";
 }
+
+let scoreHistory = [];
+let scoreChart = null;
 
 function initChart() {
   const ctx = scoreChartCanvas.getContext("2d");
@@ -107,19 +184,17 @@ function initChart() {
     type: "line",
     data: {
       labels: [],
-      datasets: [
-        {
-          label: "分平均スコア",
-          data: [],
-          borderColor: "#0f766e",
-          backgroundColor: "rgba(15, 118, 110, 0.08)",
-          tension: 0.35,
-          fill: true,
-          pointBackgroundColor: [],
-          pointRadius: 0,
-          pointHoverRadius: 0,
-        },
-      ],
+      datasets: [{
+        label: "分平均スコア",
+        data: [],
+        borderColor: "#0f766e",
+        backgroundColor: "rgba(15, 118, 110, 0.07)",
+        tension: 0.4,
+        fill: true,
+        pointBackgroundColor: [],
+        pointRadius: 3,
+        pointHoverRadius: 5,
+      }],
     },
     options: {
       responsive: true,
@@ -128,18 +203,18 @@ function initChart() {
         y: {
           min: 0,
           max: 100,
-          grid: { color: "rgba(22,22,20,0.07)" },
+          grid: { color: "rgba(128,128,128,0.10)" },
           ticks: {
-            font: { family: "IBM Plex Sans", size: 12 },
-            color: "#5c6255",
+            font: { family: "IBM Plex Sans", size: 11 },
+            color: "#888",
             stepSize: 25,
           },
         },
         x: {
-          grid: { color: "rgba(22,22,20,0.07)" },
+          grid: { color: "rgba(128,128,128,0.10)" },
           ticks: {
-            font: { family: "IBM Plex Sans", size: 12 },
-            color: "#5c6255",
+            font: { family: "IBM Plex Sans", size: 11 },
+            color: "#888",
             maxRotation: 0,
           },
         },
@@ -147,9 +222,7 @@ function initChart() {
       plugins: {
         legend: { display: false },
         tooltip: {
-          callbacks: {
-            label: (ctx) => `スコア: ${ctx.parsed.y}`,
-          },
+          callbacks: { label: (ctx) => `スコア: ${ctx.parsed.y}` },
         },
       },
       animation: { duration: 300 },
@@ -157,7 +230,8 @@ function initChart() {
   });
 
   const today = new Date();
-  chartDateLabel.textContent = `${today.getFullYear()}/${today.getMonth() + 1}/${today.getDate()}`;
+  chartDateLabel.textContent =
+    `${today.getFullYear()}/${today.getMonth() + 1}/${today.getDate()}`;
 }
 
 function computeMinuteAverages() {
@@ -198,21 +272,21 @@ async function loadTodayHistory() {
   }
 }
 
-// ── 共通ユーティリティ ───────────────────────────────────
+// ── 共通ユーティリティ ────────────────────────────────────
+
+let cameraStream = null;
+let currentSource = null;
+let autoAnalyzeTimer = null;
+let autoAnalyzeCountdownTimer = null;
+let analyzeInFlight = false;
+let nextAutoAnalyzeAtMs = null;
 
 function releaseCurrentObjectUrl() {
-  if (currentSource?.objectUrl) {
-    URL.revokeObjectURL(currentSource.objectUrl);
-  }
+  if (currentSource?.objectUrl) URL.revokeObjectURL(currentSource.objectUrl);
 }
 
-function setStatus(message) {
-  statusMessage.textContent = message;
-}
-
-function setSource(name) {
-  sourceLabel.textContent = name;
-}
+function setStatus(message) { statusMessage.textContent = message; }
+function setSource(name)  { sourceLabel.textContent = name; }
 
 function hideAllMedia() {
   cameraPreview.classList.add("hidden");
@@ -221,18 +295,19 @@ function hideAllMedia() {
   emptyPreview.classList.add("hidden");
 }
 
-function canAutoAnalyze() {
-  return currentSource?.kind === "camera";
-}
+function canAutoAnalyze() { return currentSource?.kind === "camera"; }
 
 function syncAnalyzeControls() {
   analyzeButton.disabled = !currentSource;
   autoAnalyzeButton.disabled = !canAutoAnalyze();
-  autoAnalyzeButton.textContent = autoAnalyzeTimer === null ? "自動判定を開始" : "自動判定を停止";
+  autoAnalyzeButton.textContent =
+    autoAnalyzeTimer === null ? "自動判定を開始" : "自動判定を停止";
 }
 
 function currentJudgmentLevel() {
-  return judgmentLevelSelect.value in JUDGMENT_LEVEL_LABELS ? judgmentLevelSelect.value : "balanced";
+  return judgmentLevelSelect.value in JUDGMENT_LEVEL_LABELS
+    ? judgmentLevelSelect.value
+    : "balanced";
 }
 
 function currentJudgmentLevelLabel() {
@@ -247,8 +322,7 @@ function clearAutoAnalyzeCountdownTimer() {
 }
 
 function formatCountdown(targetMs) {
-  const remainingMs = Math.max(0, targetMs - Date.now());
-  const seconds = Math.ceil(remainingMs / 1000);
+  const seconds = Math.ceil(Math.max(0, targetMs - Date.now()) / 1000);
   return `${seconds}秒`;
 }
 
@@ -257,16 +331,14 @@ function renderNextAnalyzeCountdown() {
     nextAnalyzeValue.textContent = "--";
     return;
   }
-
   nextAnalyzeValue.textContent = analyzeInFlight ? "判定中" : formatCountdown(nextAutoAnalyzeAtMs);
 }
 
-function setProcessingState(label) {
-  processingStateValue.textContent = label;
-}
+function setProcessingState(label) { processingStateValue.textContent = label; }
 
 function setNextAutoAnalyzeTimestamp(timestampMs) {
-  nextAutoAnalyzeAtMs = typeof timestampMs === "number" && Number.isFinite(timestampMs) ? timestampMs : null;
+  nextAutoAnalyzeAtMs =
+    typeof timestampMs === "number" && Number.isFinite(timestampMs) ? timestampMs : null;
   clearAutoAnalyzeCountdownTimer();
   renderNextAnalyzeCountdown();
   if (nextAutoAnalyzeAtMs !== null) {
@@ -296,21 +368,20 @@ function setReasons(items) {
 
 function setManualSignal(signal) {
   const content = MANUAL_SIGNAL_CONTENT[signal];
-  if (!content) {
-    return;
-  }
+  if (!content) return;
 
   stopAutoAnalyze();
   trafficLight.dataset.signal = signal;
   scoreValue.textContent = "--";
   confidenceValue.textContent = "--";
-  headline.textContent = content.headline;
   setReasons(content.reasons);
   playfulSuggestion.textContent = content.playfulSuggestion;
-  caution.textContent = "手動で信号を変更しています。AI判定を行うと結果は上書きされます。";
   clearSnapshot();
   setProcessingState("手動設定");
   setStatus(`手動で${content.label}信号に切り替えました。`);
+
+  // ヘッダー・ミニウィジェット同期
+  syncSignalUI(signal, "--", content.headline);
 }
 
 function showEmptyState() {
@@ -348,11 +419,7 @@ function stopAutoAnalyze() {
 }
 
 function startAutoAnalyzeInterval() {
-  if (!canAutoAnalyze()) {
-    stopAutoAnalyze();
-    return;
-  }
-
+  if (!canAutoAnalyze()) { stopAutoAnalyze(); return; }
   stopAutoAnalyze();
   const seconds = normalizeAutoAnalyzeSeconds();
   autoAnalyzeTimer = window.setInterval(() => {
@@ -365,9 +432,7 @@ function startAutoAnalyzeInterval() {
 
 function stopCamera() {
   if (cameraStream) {
-    for (const track of cameraStream.getTracks()) {
-      track.stop();
-    }
+    for (const track of cameraStream.getTracks()) track.stop();
     cameraStream = null;
   }
   cameraPreview.srcObject = null;
@@ -382,31 +447,19 @@ function stopCamera() {
 }
 
 async function requestCameraStream() {
-  if (!navigator.mediaDevices?.getUserMedia) {
-    throw new DOMException("getUserMedia is not available in this browser context.", "NotSupportedError");
-  }
-
+  if (!navigator.mediaDevices?.getUserMedia)
+    throw new DOMException("getUserMedia is not available.", "NotSupportedError");
   try {
-    return await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "user" },
-      audio: false,
-    });
+    return await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
   } catch (error) {
-    if (error.name !== "OverconstrainedError" && error.name !== "ConstraintNotSatisfiedError") {
-      throw error;
-    }
-    return navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: false,
-    });
+    if (error.name !== "OverconstrainedError" && error.name !== "ConstraintNotSatisfiedError") throw error;
+    return navigator.mediaDevices.getUserMedia({ video: true, audio: false });
   }
 }
 
 function cameraErrorMessage(error) {
-  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia)
     return "カメラを開始できませんでした。http://127.0.0.1:8000、http://localhost:8000、または https のページで開いてください。";
-  }
-
   switch (error.name) {
     case "NotAllowedError":
     case "SecurityError":
@@ -417,9 +470,6 @@ function cameraErrorMessage(error) {
     case "NotReadableError":
     case "TrackStartError":
       return "カメラを開始できませんでした。他のアプリがカメラを使用中の可能性があります。";
-    case "OverconstrainedError":
-    case "ConstraintNotSatisfiedError":
-      return "カメラを開始できませんでした。ブラウザが要求されたカメラ設定に対応していません。";
     default:
       return `カメラを開始できませんでした。${error.name || "UnknownError"}: ${error.message || "権限設定を確認してください。"}`;
   }
@@ -429,13 +479,11 @@ async function startCamera() {
   setProcessingState("カメラ起動中");
   setStatus("カメラを起動しています...");
   startCameraButton.disabled = true;
-
   try {
     stopCamera();
     setProcessingState("カメラ起動中");
     setStatus("カメラを起動しています...");
     const stream = await requestCameraStream();
-
     cameraStream = stream;
     hideAllMedia();
     cameraPreview.classList.remove("hidden");
@@ -457,49 +505,39 @@ async function startCamera() {
 
 function drawMediaToCanvas(element) {
   const context = workingCanvas.getContext("2d");
-  const sourceWidth = element.videoWidth || element.naturalWidth || element.width;
+  const sourceWidth  = element.videoWidth  || element.naturalWidth  || element.width;
   const sourceHeight = element.videoHeight || element.naturalHeight || element.height;
   const scale = Math.min(1, CAPTURE_MAX_SIDE / Math.max(sourceWidth, sourceHeight));
-  workingCanvas.width = Math.max(1, Math.round(sourceWidth * scale));
+  workingCanvas.width  = Math.max(1, Math.round(sourceWidth  * scale));
   workingCanvas.height = Math.max(1, Math.round(sourceHeight * scale));
   context.drawImage(element, 0, 0, workingCanvas.width, workingCanvas.height);
   return workingCanvas.toDataURL("image/jpeg", CAPTURE_JPEG_QUALITY);
 }
 
 async function captureCurrentFrame() {
-  if (!currentSource) {
-    return null;
-  }
-  if (currentSource.kind === "camera") {
-    return drawMediaToCanvas(cameraPreview);
-  }
-  if (currentSource.kind === "upload-image") {
-    return drawMediaToCanvas(imagePreview);
-  }
-  if (currentSource.kind === "upload-video") {
-    return drawMediaToCanvas(uploadVideo);
-  }
+  if (!currentSource) return null;
+  if (currentSource.kind === "camera")       return drawMediaToCanvas(cameraPreview);
+  if (currentSource.kind === "upload-image") return drawMediaToCanvas(imagePreview);
+  if (currentSource.kind === "upload-video") return drawMediaToCanvas(uploadVideo);
   return null;
 }
 
 function updateResult(result) {
   trafficLight.dataset.signal = result.signal;
-  scoreValue.textContent = String(result.score);
+  scoreValue.textContent      = String(result.score);
   confidenceValue.textContent = `${result.confidence}%`;
-  headline.textContent = result.headline;
   setReasons(result.reasons);
   playfulSuggestion.textContent = result.playfulSuggestion;
-  caution.textContent = result.caution;
   setProcessingState("結果を反映");
+
+  // ヘッダー・ミニウィジェット同期
+  syncSignalUI(result.signal, String(result.score), result.headline);
 }
 
 async function analyzeCurrentFrame(options = {}) {
   const { silentIfBusy = false } = options;
-
   if (analyzeInFlight) {
-    if (!silentIfBusy) {
-      setStatus("現在の判定が終わるまでお待ちください。");
-    }
+    if (!silentIfBusy) setStatus("現在の判定が終わるまでお待ちください。");
     return;
   }
 
@@ -531,13 +569,10 @@ async function analyzeCurrentFrame(options = {}) {
     });
     setProcessingState("応答を確認中");
     const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload.error || "Unknown API error");
-    }
+    if (!response.ok) throw new Error(payload.error || "Unknown API error");
     updateResult(payload);
     setStatus(`${payload.model} が${currentJudgmentLevelLabel()}で判定しました。`);
 
-    // チャートにデータ追加
     const ts = payload.generatedAt || new Date().toISOString();
     scoreHistory.push({ timestamp: ts, score: payload.score });
     refreshChart();
@@ -547,20 +582,14 @@ async function analyzeCurrentFrame(options = {}) {
     setStatus(`判定に失敗しました: ${error.message}`);
   } finally {
     analyzeInFlight = false;
-    if (autoAnalyzeTimer === null) {
-      setProcessingState("判定完了");
-    } else {
-      setProcessingState("自動判定待ち");
-    }
+    setProcessingState(autoAnalyzeTimer === null ? "判定完了" : "自動判定待ち");
     renderNextAnalyzeCountdown();
     syncAnalyzeControls();
   }
 }
 
 function onVideoScrub() {
-  if (!uploadVideo.duration || Number.isNaN(uploadVideo.duration)) {
-    return;
-  }
+  if (!uploadVideo.duration || Number.isNaN(uploadVideo.duration)) return;
   uploadVideo.currentTime = Number(videoScrubber.value) * uploadVideo.duration;
 }
 
@@ -568,12 +597,7 @@ async function loadFile(file) {
   stopAutoAnalyze();
   releaseCurrentObjectUrl();
   clearSnapshot();
-
-  if (!file) {
-    showEmptyState();
-    return;
-  }
-
+  if (!file) { showEmptyState(); return; }
   const url = URL.createObjectURL(file);
 
   if (file.type.startsWith("image/")) {
@@ -612,17 +636,14 @@ async function loadFile(file) {
   setStatus("未対応のファイル形式です。画像か動画を選択してください。");
 }
 
-// ── イベントリスナー ─────────────────────────────────────
+// ── イベントリスナー ──────────────────────────────────────
 
 startCameraButton.addEventListener("click", startCamera);
 
-// 停止ボタン: 自動判定が動いているときはカメラを再起動して継続
 stopCameraButton.addEventListener("click", async () => {
   const wasAutoAnalyzing = autoAnalyzeTimer !== null;
   if (cameraStream) {
-    for (const track of cameraStream.getTracks()) {
-      track.stop();
-    }
+    for (const track of cameraStream.getTracks()) track.stop();
     cameraStream = null;
   }
   cameraPreview.srcObject = null;
@@ -635,9 +656,7 @@ stopCameraButton.addEventListener("click", async () => {
 });
 
 captureButton.addEventListener("click", async () => {
-  if (!cameraStream) {
-    return;
-  }
+  if (!cameraStream) return;
   stopAutoAnalyze();
   const snapshot = await captureCurrentFrame();
   hideAllMedia();
@@ -662,17 +681,13 @@ analyzeButton.addEventListener("click", () => {
 });
 
 autoAnalyzeButton.addEventListener("click", () => {
-  if (!canAutoAnalyze()) {
-    return;
-  }
-
+  if (!canAutoAnalyze()) return;
   if (autoAnalyzeTimer !== null) {
     stopAutoAnalyze();
     setProcessingState("待機中");
     setStatus("自動判定を停止しました。");
     return;
   }
-
   startAutoAnalyzeInterval();
   setStatus(`自動判定中です。${normalizeAutoAnalyzeSeconds()}秒ごとに${currentJudgmentLevelLabel()}で再判定します。`);
   void analyzeCurrentFrame({ silentIfBusy: true });
@@ -680,10 +695,7 @@ autoAnalyzeButton.addEventListener("click", () => {
 
 autoAnalyzeIntervalInput.addEventListener("change", () => {
   const seconds = normalizeAutoAnalyzeSeconds();
-  if (autoAnalyzeTimer === null) {
-    return;
-  }
-
+  if (autoAnalyzeTimer === null) return;
   startAutoAnalyzeInterval();
   setStatus(`自動判定中です。${seconds}秒ごとに${currentJudgmentLevelLabel()}で再判定します。`);
 });
@@ -694,14 +706,11 @@ judgmentLevelSelect.addEventListener("change", () => {
     setStatus(`判定レベルを${label}に変更しました。次回の判定から反映されます。`);
     return;
   }
-
   setStatus(`自動判定中です。${normalizeAutoAnalyzeSeconds()}秒ごとに${label}で再判定します。`);
 });
 
 manualSignalButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    setManualSignal(button.dataset.manualSignal);
-  });
+  button.addEventListener("click", () => setManualSignal(button.dataset.manualSignal));
 });
 
 fileInput.addEventListener("change", (event) => {
@@ -719,9 +728,7 @@ uploadVideo.addEventListener("loadedmetadata", () => {
 });
 
 uploadVideo.addEventListener("timeupdate", () => {
-  if (!uploadVideo.duration || Number.isNaN(uploadVideo.duration)) {
-    return;
-  }
+  if (!uploadVideo.duration || Number.isNaN(uploadVideo.duration)) return;
   videoScrubber.value = String(uploadVideo.currentTime / uploadVideo.duration);
 });
 
@@ -736,11 +743,13 @@ window.addEventListener("beforeunload", () => {
   stopCamera();
 });
 
-// ── 初期化 ───────────────────────────────────────────────
+// ── 初期化 ────────────────────────────────────────────────
 
 autoAnalyzeIntervalInput.value = String(AUTO_ANALYZE_DEFAULT_SECONDS);
 window.setManualSignal = setManualSignal;
-showEmptyState();
+
+initTheme();
 initDeviceName();
+showEmptyState();
 initChart();
 void loadTodayHistory();
