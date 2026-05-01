@@ -5,3 +5,7 @@ pytest-cache-files-*/
 .env
 *.pyc
 data/*.db
+data/*.csv
+data/snapshots/
+.claude/
+cut-in-meter/

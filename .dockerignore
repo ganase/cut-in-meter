@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.git/
+.env
+data/
+tests/
+*.md
+*.bat
+*.command
